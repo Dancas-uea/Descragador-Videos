@@ -43,6 +43,9 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 
 class MainActivity : ComponentActivity() {
 
@@ -52,6 +55,7 @@ class MainActivity : ComponentActivity() {
 
     // Controla si el splash sigue visible (true = sigue esperando)
     private var splashVisible = true
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
 
@@ -249,6 +253,7 @@ suspend fun descargarConYtDlp(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppShell(
+
     descargando: Boolean,
     progreso: Float,
     mensajeEstado: String,
@@ -257,7 +262,10 @@ fun AppShell(
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope       = rememberCoroutineScope()
     val ctx         = LocalContext.current
-
+    var mostrarTutorial by remember { mutableStateOf(false) }
+    var mostrarConfiguraciones by remember { mutableStateOf(false) }
+    var mostrarSoporte         by remember { mutableStateOf(false) }
+    CheckActualizacion()
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -291,16 +299,21 @@ fun AppShell(
                         }
                         Spacer(Modifier.height(12.dp))
                         Text("VIP-Downloader", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Text("Version v1.0.2", color = Color.White.copy(alpha = 0.4f), fontSize = 12.sp)
+                        Text("Version v2.04", color = Color.White.copy(alpha = 0.4f), fontSize = 12.sp)
                     }
                 }
 
                 Spacer(Modifier.height(8.dp))
                 DrawerItem("https://img.icons8.com/color/48/home.png",          "Inicio")         { scope.launch { drawerState.close() } }
-                DrawerItem("https://img.icons8.com/color/48/open-book.png",     "Cómo descargar") { scope.launch { drawerState.close() } }
-                DrawerItem("https://img.icons8.com/color/48/settings.png",      "Configuraciones"){ scope.launch { drawerState.close() } }
-                DrawerItem("https://img.icons8.com/color/48/headset.png",       "Soporte") {
-                    ctx.startActivity(Intent(Intent.ACTION_SENDTO, "mailto:soporte@vdownloader.app".toUri()))
+                DrawerItem("https://img.icons8.com/color/48/open-book.png",     "Cómo descargar") {
+                    mostrarTutorial = true
+                    scope.launch { drawerState.close() } }
+                DrawerItem("https://img.icons8.com/color/48/settings.png", "Configuraciones") {
+                    mostrarConfiguraciones = true
+                    scope.launch { drawerState.close() }
+                }
+                DrawerItem("https://img.icons8.com/color/48/headset.png", "Soporte") {
+                    mostrarSoporte = true
                     scope.launch { drawerState.close() }
                 }
 
@@ -362,8 +375,166 @@ fun AppShell(
             )
         }
     }
+    if (mostrarTutorial) {
+        TutorialBottomSheet(onDismiss = { mostrarTutorial = false })
+    }
+    if (mostrarConfiguraciones) {
+        ConfiguracionesScreen(onBack = { mostrarConfiguraciones = false })
+    }
+    if (mostrarSoporte) {
+        SoporteScreen(onBack = { mostrarSoporte = false })
+    }
 }
 
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TutorialBottomSheet(onDismiss: () -> Unit) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var paso by remember { mutableStateOf(0) }
+
+    val pasos = listOf(
+        Triple(
+            "Abre TikTok y busca el video",
+            "Encuentra el video que quieres descargar en tu feed o búscalo.",
+            "https://img.icons8.com/?size=100&id=118638&format=png&color=ffffff"
+        ),
+        Triple(
+            "Toca el botón Compartir",
+            "Presiona el ícono de flecha que aparece en el lado derecho del video.",
+            "https://img.icons8.com/?size=100&id=11504&format=png&color=ffffff"
+        ),
+        Triple(
+            "Selecciona \"Copiar enlace\"",
+            "En el menú que aparece desliza y toca \"Copiar enlace\".",
+            "https://img.icons8.com/?size=100&id=92&format=png&color=ffffff"
+        ),
+        Triple(
+            "Pega el enlace en VIP-Downloader",
+            "Vuelve a la app, pega el enlace en la barra y toca Descargar.",
+            "https://img.icons8.com/?size=100&id=MgeSqljOTSdx&format=png&color=ffffff"
+        )
+    )
+
+    ModalBottomSheet(
+        onDismissRequest  = onDismiss,
+        sheetState        = sheetState,
+        containerColor    = Color(0xFF0D0F14),
+        shape             = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // ── Título ────────────────────────────────────────────────────
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                AsyncImage(
+                    model = "https://img.icons8.com/color/48/tiktok.png",
+                    contentDescription = "TikTok",
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Cómo descargar de TikTok",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+
+            // ── Paso actual ───────────────────────────────────────────────
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape    = RoundedCornerShape(16.dp),
+                colors   = CardDefaults.cardColors(containerColor = Color(0xFF1A1D26))
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Número de paso
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Accent),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "${paso + 1}",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+
+                    AsyncImage(
+                        model = pasos[paso].third,
+                        contentDescription = null,
+                        modifier = Modifier.size(56.dp)
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    Text(
+                        pasos[paso].first,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Text(
+                        pasos[paso].second,
+                        color = Color.White.copy(alpha = 0.6f),
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            // ── Indicadores de puntos ─────────────────────────────────────
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                pasos.forEachIndexed { i, _ ->
+                    Box(
+                        modifier = Modifier
+                            .size(if (i == paso) 20.dp else 8.dp, 8.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(if (i == paso) Accent else Color.White.copy(alpha = 0.2f))
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            // ── Botón Próximo / Finalizar ─────────────────────────────────
+            Button(
+                onClick = { if (paso < pasos.size - 1) paso++ else onDismiss() },
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+                shape  = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Accent)
+            ) {
+                Text(
+                    if (paso < pasos.size - 1) "Próximo" else "¡Entendido!",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
+            }
+        }
+    }
+}
 @Composable
 fun DrawerItem(iconUrl: String, label: String, onClick: () -> Unit) {
     Row(
