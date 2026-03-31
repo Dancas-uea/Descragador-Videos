@@ -9,14 +9,13 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -24,7 +23,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.descargadorvideos.ui.theme.Accent
+import com.example.descargadorvideos.ui.theme.BorderLight
 import com.example.descargadorvideos.ui.theme.DescargadorVideosTheme
+import com.example.descargadorvideos.ui.theme.TextSecondary
 import kotlinx.coroutines.delay
 
 @SuppressLint("CustomSplashScreen")
@@ -45,11 +46,10 @@ class SplashActivity : ComponentActivity() {
 @Composable
 fun SplashScreen(onFinish: () -> Unit) {
 
-    // FIX: estado visible para que la animación tenga desde dónde arrancar (0.4f → 1f)
+    // ── Animación de entrada del logo ─────────────────────────────────────────
     var visible by remember { mutableStateOf(false) }
-
     val scale by animateFloatAsState(
-        targetValue   = if (visible) 1f else 0.4f,
+        targetValue   = if (visible) 1f else 0.5f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness    = Spring.StiffnessMedium
@@ -57,87 +57,104 @@ fun SplashScreen(onFinish: () -> Unit) {
         label = "scale"
     )
 
-    // FIX: LaunchedEffect unificado — dispara la animación y luego navega
+    // ── Barra de progreso animada de 0 → 1 en 2.5s ───────────────────────────
+    var progreso by remember { mutableStateOf(0f) }
+    val progresoAnimado by animateFloatAsState(
+        targetValue   = progreso,
+        animationSpec = tween(durationMillis = 2500, easing = LinearEasing),
+        label         = "progreso"
+    )
+
     LaunchedEffect(Unit) {
-        visible = true
+        visible  = true
+        progreso = 1f
         delay(2800)
         onFinish()
     }
 
-    val infiniteTransition = rememberInfiniteTransition(label = "loading")
-    val dotOffset by infiniteTransition.animateFloat(
-        initialValue  = 0f,
-        targetValue   = 1f,
-        animationSpec = infiniteRepeatable(
-            tween(1200, easing = LinearEasing),
-            RepeatMode.Restart
-        ),
-        label = "dot"
-    )
-
+    // ── UI ────────────────────────────────────────────────────────────────────
     Box(
-        modifier = Modifier
-
+        modifier         = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color(0xFF0544EA), Color(0xFF0D6EE7))
-                )
-            ),
+            .background(Color.White),
         contentAlignment = Alignment.Center
     ) {
+
+        // ── Contenido central ─────────────────────────────────────────────────
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center ,
-            modifier = Modifier.fillMaxWidth()
+            verticalArrangement = Arrangement.Center,
+            modifier            = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 40.dp)
         ) {
 
-            // ── Logo con animación de escala ───────────────────────────────────
+            // ── Logo ──────────────────────────────────────────────────────────
             Image(
-                painter            = painterResource(id = R.mipmap.icon_do),
+                painter            = painterResource(id = R.drawable.icon_do_round),
                 contentDescription = "VIP-Downloader logo",
                 modifier           = Modifier
-                    .size(10.dp)
-                    .clip(CircleShape)
-                    .scale(scale)          // ahora sí rebota desde 0.4f
+                    .scale(scale)
+                    .size(100.dp)
+                    .clip(RoundedCornerShape(24.dp))
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(Modifier.height(28.dp))
 
             // ── Nombre ────────────────────────────────────────────────────────
             Text(
                 text          = "VIP-Downloader",
-                color         = Color.White,
-                fontSize      = 28.sp,
+                color         = Color(0xFF0D0F14),
+                fontSize      = 30.sp,
                 fontWeight    = FontWeight.Bold,
                 letterSpacing = (-0.5).sp
             )
+
+            Spacer(Modifier.height(6.dp))
+
             Text(
                 text      = "TikTok · YouTube · Instagram · X · Facebook",
-                color     = Color.White.copy(alpha = 0.45f),
+                color     = TextSecondary,
                 fontSize  = 12.sp,
-                textAlign = TextAlign.Center,
-                modifier  = Modifier.padding(top = 6.dp)
+                textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(Modifier.height(48.dp))
 
-            // ── Dots loader ───────────────────────────────────────────────────
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                repeat(3) { i ->
-                    val alpha = ((dotOffset * 3 - i).let {
-                        if (it < 0f) it + 3f else it
-                    }.coerceIn(0f, 1f)).let { v ->
-                        if (v < 0.5f) v * 2 else 2f - v * 2
-                    }
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(Accent.copy(alpha = 0.3f + alpha * 0.7f))
-                    )
-                }
+            // ── Barra de progreso ─────────────────────────────────────────────
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(BorderLight)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progresoAnimado)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Accent)
+                )
             }
+
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                text     = "Cargando ${(progresoAnimado * 100).toInt()}%",
+                color    = TextSecondary,
+                fontSize = 11.sp
+            )
         }
+
+        // ── Versión abajo del todo ────────────────────────────────────────────
+        Text(
+            text     = "v1.0.0",
+            color    = TextSecondary.copy(alpha = 0.5f),
+            fontSize = 11.sp,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 32.dp)
+        )
     }
 }

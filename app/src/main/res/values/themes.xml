@@ -2,23 +2,23 @@
 <resources>
     <!--
         Tema base = Theme.SplashScreen (viene de core-splashscreen).
-        El sistema muestra este splash nativo mientras carga MainActivity.
+        El sistema muestra este splash nativo mientras carga SplashActivity.
     -->
     <style name="Theme.DescargadorVideos" parent="Theme.SplashScreen">
-        <!-- Fondo oscuro del splash -->
-        <item name="windowSplashScreenBackground">#1A1D26</item>
-        <!-- Ícono centrado (tu mipmap existente) -->
+        <!-- Fondo blanco para que no haya flash oscuro -->
+        <item name="windowSplashScreenBackground">#FFFFFF</item>
+        <!-- Ícono centrado -->
         <item name="windowSplashScreenAnimatedIcon">@mipmap/icon_do</item>
         <!-- Duración de la animación del ícono en ms -->
-        <item name="windowSplashScreenAnimationDuration">1000</item>
-        <!-- Tema que toma la app una vez que el splash desaparece -->
+        <item name="windowSplashScreenAnimationDuration">500</item>
+        <!-- Tema que toma la app una vez que el splash nativo desaparece -->
         <item name="postSplashScreenTheme">@style/Theme.DescargadorVideos.Main</item>
     </style>
 
     <!-- Tema principal — Compose no necesita Material XML, solo una base limpia -->
     <style name="Theme.DescargadorVideos.Main" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">#1A1D26</item>
-        <item name="android:statusBarColor">#1A1D26</item>
-        <item name="android:navigationBarColor">#1A1D26</item>
+        <item name="android:windowBackground">#FFFFFF</item>
+        <item name="android:statusBarColor">#FFFFFF</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
     </style>
 </resources>
