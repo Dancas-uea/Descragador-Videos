@@ -19,9 +19,9 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@mipmap/ic_launcher"
-        android:label="VDownloader"
-        android:roundIcon="@mipmap/ic_launcher_round"
+        android:icon="@mipmap/icon_do"
+        android:label="VIP-Downloader"
+        android:roundIcon="@mipmap/icon_do_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.DescargadorVideos"
         android:usesCleartextTraffic="false"

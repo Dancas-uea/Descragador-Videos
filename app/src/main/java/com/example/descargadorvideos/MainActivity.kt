@@ -114,7 +114,7 @@ suspend fun descargarConYtDlp(
     try {
         val carpetaDescarga = File(
             context.getExternalFilesDir(null),
-            "VDownloader"
+            "Downloader"
         ).also { it.mkdirs() }
 
         // Detectar plataforma
@@ -189,7 +189,7 @@ suspend fun descargarConYtDlp(
 
         val extFinal      = archivoFinal.extension.ifEmpty { if (esMp3) "mp3" else "mp4" }
         val mimeType      = if (esMp3) "audio/mpeg" else "video/mp4"
-        val nombrePublico = "VDownloader_${System.currentTimeMillis()}.$extFinal"
+        val nombrePublico = "VIP-Downloader_${System.currentTimeMillis()}.$extFinal"
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val cv = ContentValues().apply {
@@ -278,8 +278,8 @@ fun AppShell(
                             Text("↓", fontSize = 26.sp, color = Color.White, fontWeight = FontWeight.Bold)
                         }
                         Spacer(Modifier.height(12.dp))
-                        Text("VDownloader", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Text("Motor: yt-dlp nativo", color = Color.White.copy(alpha = 0.4f), fontSize = 12.sp)
+                        Text("VIP-Downloader", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text("Verion v1.0.2", color = Color.White.copy(alpha = 0.4f), fontSize = 12.sp)
                     }
                 }
 
@@ -327,7 +327,7 @@ fun AppShell(
                 CenterAlignedTopAppBar(
                     title = {
                         Text(
-                            "VDownloader",
+                            "VIP-Downloader v1.0.2",
                             fontWeight    = FontWeight.Bold,
                             fontSize      = 17.sp,
                             color         = TextPrimary,
