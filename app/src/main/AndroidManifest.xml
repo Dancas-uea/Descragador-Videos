@@ -19,7 +19,7 @@
 
     <application
         android:allowBackup="true"
-        android:icon="@drawable/ic_launcher_background"
+        android:icon="@mipmap/ic_launcher"
         android:label="VDownloader"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
@@ -27,9 +27,8 @@
         android:usesCleartextTraffic="false"
         android:requestLegacyExternalStorage="true">
 
-        <!-- Splash: LAUNCHER principal -->
         <activity
-            android:name=".SplashActivity"
+            android:name=".MainActivity"
             android:exported="true"
             android:theme="@style/Theme.DescargadorVideos"
             android:screenOrientation="portrait">
@@ -38,13 +37,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- Main: se abre desde Splash -->
-        <activity
-            android:name=".MainActivity"
-            android:exported="false"
-            android:theme="@style/Theme.DescargadorVideos"
-            android:screenOrientation="portrait" />
 
     </application>
 

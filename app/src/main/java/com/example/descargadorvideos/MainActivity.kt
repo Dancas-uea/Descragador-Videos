@@ -6,94 +6,91 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import androidx.compose.ui.tooling.preview.Preview
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import com.example.descargadorvideos.ui.theme.*
+import com.yausername.youtubedl_android.YoutubeDL
+import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONObject
-import java.io.OutputStream
-import java.util.concurrent.TimeUnit
-
-const val COBALT_API = "https://cobalt-api-production-3a13.up.railway.app"
-
-// ── Plataformas soportadas ────────────────────────────────────────────────────
-data class Plataforma(val nombre: String, val color: Color, val emoji: String, val dominio: String)
-
-val PLATAFORMAS = listOf(
-    Plataforma("TikTok",    ColorTikTok,    "♪", "tiktok.com"),
-    Plataforma("YouTube",   ColorYouTube,   "▶", "youtube.com"),
-    Plataforma("Instagram", ColorInstagram, "◈", "instagram.com"),
-    Plataforma("Facebook",  ColorFacebook,  "f", "facebook.com"),
-    Plataforma("X / Twitter", ColorTwitterX, "𝕏", "twitter.com"),
-)
+import java.io.File
 
 class MainActivity : ComponentActivity() {
 
-    private val descargando  = mutableStateOf(false)
-    private val progreso     = mutableStateOf(0f)
+    private val procesando    = mutableStateOf(false)
+    private val progreso      = mutableStateOf(0f)
     private val mensajeEstado = mutableStateOf("")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Inicializar yt-dlp una sola vez al arrancar
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                YoutubeDL.getInstance().init(application)
+                // Actualizar al canal estable (nueva firma en 0.17.+)
+                YoutubeDL.getInstance().updateYoutubeDL(
+                    application,
+                    YoutubeDL.UpdateChannel.STABLE
+                )
+            } catch (e: Exception) {
+                // Si falla el update no es crítico, continúa con la versión instalada
+            }
+        }
+
         setContent {
             DescargadorVideosTheme {
-                AppShell (
-                    descargando   = descargando.value,
+                AppShell(
+                    descargando   = procesando.value,
                     progreso      = progreso.value,
                     mensajeEstado = mensajeEstado.value,
-                    onDescargar   = { url -> iniciarDescarga(url)}
+                    onDescargar   = { url -> iniciarDescarga(url) }
                 )
             }
         }
     }
 
     private fun iniciarDescarga(url: String) {
-        if (descargando.value) return
-        descargando.value  = true
-        progreso.value     = 0f
-        mensajeEstado.value = "Conectando..."
+        val urlLimpia = url.trim()
+        if (urlLimpia.isEmpty()) {
+            Toast.makeText(this, "⚠️ Pega un enlace primero", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (procesando.value) return
+
+        procesando.value    = true
+        progreso.value      = 0f
+        mensajeEstado.value = "Extrayendo info del video..."
 
         lifecycleScope.launch {
-            val resultado = descargarConCobalt(url, this@MainActivity) { p, msg ->
+            val resultado = descargarConYtDlp(urlLimpia, this@MainActivity) { p, msg ->
                 progreso.value      = p
                 mensajeEstado.value = msg
             }
-            descargando.value   = false
+            procesando.value    = false
             mensajeEstado.value = resultado.second
             Toast.makeText(this@MainActivity, resultado.second, Toast.LENGTH_LONG).show()
         }
@@ -101,7 +98,101 @@ class MainActivity : ComponentActivity() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SHELL: TopBar + Drawer
+// MOTOR: yt-dlp nativo corriendo en el dispositivo
+// ─────────────────────────────────────────────────────────────────────────────
+
+suspend fun descargarConYtDlp(
+    videoUrl: String,
+    context: Context,
+    onProgreso: (Float, String) -> Unit
+): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+
+    try {
+        // Carpeta de descarga temporal dentro de la app
+        val carpetaDescarga = File(
+            context.getExternalFilesDir(null),
+            "VDownloader"
+        ).also { it.mkdirs() }
+
+        val nombreArchivo = "video_${System.currentTimeMillis()}.mp4"
+        val archivoFinal  = File(carpetaDescarga, nombreArchivo)
+
+        // ── Configurar request de yt-dlp ─────────────────────────────────────
+        val request = YoutubeDLRequest(videoUrl).apply {
+            addOption("-f", "bestvideo[ext=mp4][vcodec^=avc]+bestaudio[ext=m4a]/best[ext=mp4]/best")
+            addOption("-o", archivoFinal.absolutePath)
+            addOption("--merge-output-format", "mp4")
+            addOption("--no-playlist")
+            addOption("--extractor-args", "tiktok:webpage_download=true")
+        }
+
+        // ── Ejecutar descarga con callback de progreso ────────────────────────
+        YoutubeDL.getInstance().execute(request) { p, _, line ->
+            val porcentaje = p / 100f
+            val msg = when {
+                line.contains("Downloading") -> "Descargando... ${p.toInt()}%"
+                line.contains("Merging")     -> "Fusionando video y audio..."
+                line.contains("already")     -> "Ya descargado"
+                else                         -> "Procesando... ${p.toInt()}%"
+            }
+            kotlinx.coroutines.runBlocking {
+                withContext(Dispatchers.Main) { onProgreso(porcentaje, msg) }
+            }
+        }
+
+        if (!archivoFinal.exists() || archivoFinal.length() == 0L) {
+            return@withContext Pair(false, "❌ El archivo no se generó correctamente")
+        }
+
+        // ── Mover a /Downloads públicos con MediaStore ────────────────────────
+        withContext(Dispatchers.Main) { onProgreso(0.95f, "Guardando en Descargas...") }
+
+        val nombrePublico = "VDownloader_${System.currentTimeMillis()}.mp4"
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val cv = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, nombrePublico)
+                put(MediaStore.Downloads.MIME_TYPE,    "video/mp4")
+                put(MediaStore.Downloads.IS_PENDING,   1)
+            }
+            val uri = context.contentResolver.insert(
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv
+            ) ?: return@withContext Pair(false, "❌ No se pudo crear archivo en Descargas")
+
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+                archivoFinal.inputStream().use { inp -> inp.copyTo(out) }
+            }
+
+            cv.clear()
+            cv.put(MediaStore.Downloads.IS_PENDING, 0)
+            context.contentResolver.update(uri, cv, null, null)
+        } else {
+            val dir = android.os.Environment.getExternalStoragePublicDirectory(
+                android.os.Environment.DIRECTORY_DOWNLOADS
+            )
+            dir.mkdirs()
+            archivoFinal.copyTo(File(dir, nombrePublico), overwrite = true)
+        }
+
+        archivoFinal.delete()
+
+        return@withContext Pair(true, "✅ Guardado en Descargas: $nombrePublico")
+
+    } catch (e: com.yausername.youtubedl_android.YoutubeDLException) {
+        val msg = e.message ?: "Error desconocido"
+        return@withContext when {
+            "private"     in msg.lowercase() -> Pair(false, "❌ Video privado o eliminado")
+            "login"       in msg.lowercase() -> Pair(false, "❌ Este video requiere inicio de sesión")
+            "unavailable" in msg.lowercase() -> Pair(false, "❌ Video no disponible en tu región")
+            else -> Pair(false, "❌ Error: $msg")
+        }
+    } catch (e: Exception) {
+        return@withContext Pair(false, "❌ Error inesperado: ${e.localizedMessage}")
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI
 // ─────────────────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -119,7 +210,71 @@ fun AppShell(
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-            AppDrawer(onClose = { scope.launch { drawerState.close() } }, ctx = ctx)
+            ModalDrawerSheet(
+                drawerContainerColor = DrawerBg,
+                drawerShape          = RoundedCornerShape(topEnd = 20.dp, bottomEnd = 20.dp),
+                modifier             = Modifier.width(280.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(DrawerSurface)
+                        .padding(24.dp)
+                        .padding(top = 28.dp)
+                ) {
+                    Column {
+                        Box(
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Accent),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("↓", fontSize = 26.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Text("VDownloader", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text("Motor: yt-dlp nativo", color = Color.White.copy(alpha = 0.4f), fontSize = 12.sp)
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+                DrawerItem("🏠", "Inicio")          { scope.launch { drawerState.close() } }
+                DrawerItem("📖", "Cómo descargar")  { scope.launch { drawerState.close() } }
+                DrawerItem("⚙️", "Configuraciones") { scope.launch { drawerState.close() } }
+                DrawerItem("🎧", "Soporte") {
+                    ctx.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:soporte@vdownloader.app")))
+                    scope.launch { drawerState.close() }
+                }
+
+                Spacer(Modifier.weight(1f))
+                Divider(color = DrawerBorder)
+
+                Text(
+                    "Plataformas",
+                    color    = Color.White.copy(alpha = 0.35f),
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 8.dp),
+                    letterSpacing = 1.sp
+                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("♪ TikTok", "▶ YT", "◈ IG", "𝕏", "f FB").forEach { label ->
+                        Text(
+                            label,
+                            color    = Color.White.copy(alpha = 0.6f),
+                            fontSize = 11.sp,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(DrawerSurface)
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(24.dp))
+            }
         }
     ) {
         Scaffold(
@@ -128,18 +283,17 @@ fun AppShell(
                     title = {
                         Text(
                             "VDownloader",
-                            fontWeight = FontWeight.Bold,
-                            fontSize   = 17.sp,
-                            color      = TextPrimary,
+                            fontWeight    = FontWeight.Bold,
+                            fontSize      = 17.sp,
+                            color         = TextPrimary,
                             letterSpacing = (-0.3).sp
                         )
                     },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            // Hamburger icon
                             Column(
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
-                                modifier = Modifier.padding(4.dp)
+                                modifier            = Modifier.padding(4.dp)
                             ) {
                                 repeat(3) {
                                     Box(
@@ -170,112 +324,21 @@ fun AppShell(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DRAWER
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-fun AppDrawer(onClose: () -> Unit, ctx: Context) {
-    ModalDrawerSheet(
-        drawerContainerColor = DrawerBg,
-        drawerShape          = RoundedCornerShape(topEnd = 20.dp, bottomEnd = 20.dp),
-        modifier             = Modifier.width(280.dp)
-    ) {
-        // Header
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(DrawerSurface)
-                .padding(24.dp)
-                .padding(top = 28.dp)
-        ) {
-            Column {
-                Box(
-                    modifier = Modifier
-                        .size(52.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Accent),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("↓", fontSize = 26.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                }
-                Spacer(Modifier.height(12.dp))
-                Text("VDownloader", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Text("v2.03 Pro", color = Color.White.copy(alpha = 0.4f), fontSize = 12.sp)
-            }
-        }
-
-        Divider(color = DrawerBorder, thickness = 1.dp)
-        Spacer(Modifier.height(8.dp))
-
-        // Items del menú
-        DrawerItem(emoji = "🏠", label = "Inicio",           onClick = onClose)
-        DrawerItem(emoji = "📖", label = "Cómo descargar",   onClick = { onClose() })
-        DrawerItem(emoji = "⚙️", label = "Configuraciones",  onClick = { onClose() })
-        DrawerItem(emoji = "🎧", label = "Servicio al cliente", onClick = {
-            val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:soporte@vdownloader.app"))
-            ctx.startActivity(intent)
-            onClose()
-        })
-
-        Spacer(Modifier.weight(1f))
-        Divider(color = DrawerBorder, thickness = 1.dp)
-
-        // Redes sociales
-        Text(
-            "Síguenos",
-            color    = Color.White.copy(alpha = 0.35f),
-            fontSize = 11.sp,
-            modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 8.dp),
-            letterSpacing = 1.sp
-        )
-        Row(
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            SocialChip("TikTok",   ColorTikTok,    "♪", "https://tiktok.com",    ctx)
-            SocialChip("IG",       ColorInstagram, "◈", "https://instagram.com", ctx)
-            SocialChip("X",        Color.White,    "𝕏", "https://x.com",         ctx)
-        }
-        Spacer(Modifier.height(24.dp))
-    }
-}
-
 @Composable
 fun DrawerItem(emoji: String, label: String, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Transparent)
             .padding(horizontal = 20.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment     = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text(emoji, fontSize = 18.sp)
         Text(label, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
     }
 }
-
-@Composable
-fun SocialChip(label: String, color: Color, icon: String, url: String, ctx: Context) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(DrawerSurface)
-            .border(1.dp, DrawerBorder, RoundedCornerShape(8.dp))
-            .clickable {
-                ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-            }
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(icon, fontSize = 16.sp, color = color)
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HOME SCREEN
-// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 fun HomeScreen(
@@ -296,46 +359,32 @@ fun HomeScreen(
             .padding(horizontal = 16.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-
-        // ── Chips de plataformas ──────────────────────────────────────────────
-        Text(
-            "Plataformas soportadas",
-            style    = MaterialTheme.typography.labelMedium,
-            color    = TextSecondary,
-            modifier = Modifier.padding(start = 4.dp)
-        )
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            PLATAFORMAS.forEach { p ->
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(SurfaceCard)
-                        .border(1.dp, BorderLight, RoundedCornerShape(10.dp))
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(p.emoji, fontSize = 16.sp)
+        // ── Chips plataformas ─────────────────────────────────────────────────
+        Text("Plataformas soportadas", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("♪" to "TikTok", "▶" to "YouTube", "◈" to "Instagram", "𝕏" to "X", "f" to "FB").forEach { (icon, name) ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(SurfaceCard),
+                        contentAlignment = Alignment.Center
+                    ) { Text(icon, fontSize = 20.sp) }
+                    Text(name, fontSize = 9.sp, color = TextSecondary)
                 }
             }
         }
 
-        // ── Card principal de descarga ────────────────────────────────────────
+        // ── Card descarga ─────────────────────────────────────────────────────
         Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape    = RoundedCornerShape(20.dp),
-            colors   = CardDefaults.cardColors(containerColor = SurfaceCard),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            modifier  = Modifier.fillMaxWidth(),
+            shape     = RoundedCornerShape(20.dp),
+            colors    = CardDefaults.cardColors(containerColor = SurfaceCard),
+            elevation = CardDefaults.cardElevation(2.dp)
         ) {
             Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-
-                Text(
-                    "Pega el enlace del video",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = TextPrimary
-                )
+                Text("Pega el enlace del video", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
 
                 OutlinedTextField(
                     value         = urlVideo,
@@ -350,9 +399,7 @@ fun HomeScreen(
                         unfocusedBorderColor = BorderLight,
                         focusedTextColor     = TextPrimary,
                         unfocusedTextColor   = TextPrimary,
-                        cursorColor          = Accent,
-                        disabledBorderColor  = BorderLight,
-                        disabledTextColor    = TextSecondary
+                        cursorColor          = Accent
                     )
                 )
 
@@ -370,11 +417,7 @@ fun HomeScreen(
                     )
                 ) {
                     if (descargando) {
-                        CircularProgressIndicator(
-                            modifier    = Modifier.size(20.dp),
-                            color       = Color.White,
-                            strokeWidth = 2.dp
-                        )
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
                         Spacer(Modifier.width(10.dp))
                         Text("Descargando...", color = Color.White, fontWeight = FontWeight.SemiBold)
                     } else {
@@ -384,23 +427,19 @@ fun HomeScreen(
             }
         }
 
-        // ── Progreso / resultado ──────────────────────────────────────────────
+        // ── Progreso ──────────────────────────────────────────────────────────
         if (descargando || mensajeEstado.isNotEmpty()) {
             Card(
                 modifier  = Modifier.fillMaxWidth(),
                 shape     = RoundedCornerShape(16.dp),
                 colors    = CardDefaults.cardColors(
-                    containerColor = if (mensajeEstado.startsWith("✅")) Color(0xFFF0FDF4)
-                    else if (mensajeEstado.startsWith("❌")) Color(0xFFFFF1F2)
-                    else SurfaceCard
+                    containerColor = when {
+                        mensajeEstado.startsWith("✅") -> Color(0xFFF0FDF4)
+                        mensajeEstado.startsWith("❌") -> Color(0xFFFFF1F2)
+                        else -> SurfaceCard
+                    }
                 ),
-                elevation = CardDefaults.cardElevation(0.dp),
-                border    = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    if (mensajeEstado.startsWith("✅")) Color(0xFFBBF7D0)
-                    else if (mensajeEstado.startsWith("❌")) Color(0xFFFFCDD2)
-                    else BorderLight
-                )
+                elevation = CardDefaults.cardElevation(0.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
@@ -413,13 +452,14 @@ fun HomeScreen(
                         style = MaterialTheme.typography.bodyMedium
                     )
                     if (descargando) {
-                        if (progreso >= 0f) {
+                        if (progreso > 0f) {
                             LinearProgressIndicator(
-                                progress  = { progreso },
-                                modifier  = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(10.dp)),
-                                color     = Accent,
+                                progress   = { progreso },
+                                modifier   = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(10.dp)),
+                                color      = Accent,
                                 trackColor = BorderLight
                             )
+                            Text("${(progreso * 100).toInt()}%", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
                         } else {
                             LinearProgressIndicator(
                                 modifier   = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(10.dp)),
@@ -432,7 +472,7 @@ fun HomeScreen(
             }
         }
 
-        // ── Card de info ──────────────────────────────────────────────────────
+        // ── Info card ─────────────────────────────────────────────────────────
         Card(
             modifier  = Modifier.fillMaxWidth(),
             shape     = RoundedCornerShape(16.dp),
@@ -441,153 +481,18 @@ fun HomeScreen(
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("💡 Cómo usar", style = MaterialTheme.typography.titleMedium, color = Accent)
-                Text("1. Copia el enlace del video desde TikTok, YouTube, Instagram, X o Facebook.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                Text("2. Pégalo en el campo de arriba.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
-                Text("3. Toca Descargar. El video se guardará en tu carpeta Descargas.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                Text("1. Copia el enlace desde TikTok, YouTube, Instagram, X o Facebook.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                Text("2. Pégalo arriba y toca Descargar.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                Text("3. El video se guarda en tu carpeta Descargas.", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
             }
         }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// LÓGICA DE DESCARGA CON COBALT
-// ─────────────────────────────────────────────────────────────────────────────
-
-suspend fun descargarConCobalt(
-    videoUrl: String,
-    context: Context,
-    onProgreso: (Float, String) -> Unit
-): Pair<Boolean, String> = withContext(Dispatchers.IO) {
-
-    val cliente = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(900, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .build()
-
-    val jsonBody = JSONObject().apply {
-        put("url",                videoUrl.trim())
-        put("videoQuality",       "1080")
-        put("downloadMode",       "auto")
-        put("filenameStyle",      "basic")
-        put("youtubeVideoCodec",  "h264")
-        put("youtubeVideoContainer", "mp4")
-        put("alwaysProxy",        true)
-    }.toString()
-
-    val cobaltReq = Request.Builder()
-        .url("$COBALT_API/")
-        .post(jsonBody.toRequestBody("application/json".toMediaType()))
-        .header("Accept",       "application/json")
-        .header("Content-Type", "application/json")
-        .build()
-
-    val directUrl: String
-    val filename: String
-
-    try {
-        val cobaltResp = cliente.newCall(cobaltReq).execute()
-        val bodyStr    = cobaltResp.body?.string() ?: return@withContext Pair(false, "❌ Cobalt no respondió")
-        val json       = JSONObject(bodyStr)
-        val status     = json.optString("status", "error")
-
-        when (status) {
-            "tunnel", "redirect" -> {
-                directUrl = json.getString("url")
-                filename  = json.optString("filename", "vdownloader_${System.currentTimeMillis()}.mp4")
-            }
-            "picker" -> {
-                val picker = json.optJSONArray("picker")
-                if (picker != null && picker.length() > 0) {
-                    directUrl = picker.getJSONObject(0).getString("url")
-                    filename  = "vdownloader_${System.currentTimeMillis()}.mp4"
-                } else return@withContext Pair(false, "❌ No se encontró video")
-            }
-            "error" -> {
-                val code = json.optJSONObject("error")?.optString("code") ?: "desconocido"
-                return@withContext Pair(false, "❌ Cobalt: $code")
-            }
-            else -> return@withContext Pair(false, "❌ Respuesta inesperada: $status")
-        }
-    } catch (e: Exception) {
-        return@withContext Pair(false, "❌ Error al contactar servidor: ${e.localizedMessage}")
-    }
-
-    withContext(Dispatchers.Main) { onProgreso(0f, "Iniciando descarga...") }
-
-    val videoReq = Request.Builder()
-        .url(directUrl)
-        .header("User-Agent", "VDownloader-Android/2.03")
-        .build()
-
-    try {
-        val videoResp  = cliente.newCall(videoReq).execute()
-        if (!videoResp.isSuccessful)
-            return@withContext Pair(false, "❌ Error CDN: HTTP ${videoResp.code}")
-
-        val body       = videoResp.body ?: return@withContext Pair(false, "❌ Respuesta vacía")
-        val totalBytes = videoResp.header("Content-Length")?.toLongOrNull() ?: -1L
-
-        val outputStream: OutputStream
-        val uriData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val cv = ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, filename)
-                put(MediaStore.Downloads.MIME_TYPE,    "video/mp4")
-                put(MediaStore.Downloads.IS_PENDING,   1)
-            }
-            val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv)
-                ?: return@withContext Pair(false, "❌ No se pudo crear el archivo")
-            outputStream = context.contentResolver.openOutputStream(uri)
-                ?: return@withContext Pair(false, "❌ No se pudo escribir el archivo")
-            Pair(uri, cv)
-        } else {
-            val dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
-            dir.mkdirs()
-            outputStream = java.io.File(dir, filename).outputStream()
-            null
-        }
-
-        val buffer   = ByteArray(65536)
-        var leidos   = 0L
-        var chunk    : Int
-        val input    = body.byteStream()
-
-        try {
-            while (input.read(buffer).also { chunk = it } != -1) {
-                outputStream.write(buffer, 0, chunk)
-                leidos += chunk
-                if (totalBytes > 0) {
-                    val pct = leidos.toFloat() / totalBytes.toFloat()
-                    withContext(Dispatchers.Main) { onProgreso(pct, "Descargando...") }
-                }
-            }
-        } finally {
-            outputStream.close()
-            input.close()
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && uriData != null) {
-            val (uri, cv) = uriData
-            cv.put(MediaStore.Downloads.IS_PENDING, 0)
-            context.contentResolver.update(uri, cv, null, null)
-        }
-
-        return@withContext Pair(true, "✅ Guardado en Descargas")
-
-    } catch (e: Exception) {
-        return@withContext Pair(false, "❌ Error descargando")
     }
 }
 
 @Preview(showBackground = true, device = "id:pixel_7")
 @Composable
-fun PreviewPantallaFormal() {
+fun PreviewApp() {
     DescargadorVideosTheme {
-        AppShell(
-            descargando = true,
-            progreso = 0.65f,
-            mensajeEstado = "Descargando: 65%",
-            onDescargar = { url -> }
-        )
+        AppShell(descargando = false, progreso = 0f, mensajeEstado = "", onDescargar = {})
     }
 }

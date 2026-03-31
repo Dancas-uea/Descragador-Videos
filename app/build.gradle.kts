@@ -4,16 +4,27 @@ plugins {
 }
 
 android {
-    namespace   = "com.example.descargadorvideos"
-    compileSdk  = 35
+    namespace  = "com.example.descargadorvideos"
+    compileSdk = 35
 
     defaultConfig {
-        applicationId           = "com.example.descargadorvideos"
-        minSdk                  = 24
-        targetSdk               = 35
-        versionCode             = 1
-        versionName             = "2.03"
+        applicationId             = "com.example.descargadorvideos"
+        minSdk                    = 24
+        targetSdk                 = 35
+        versionCode               = 1
+        versionName               = "2.03"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
+    }
+
+    // packagingOptions fue renombrado a packaging en AGP 7+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 
     buildTypes {
@@ -40,20 +51,21 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
-    // Icons extended (para Icons.Default.Menu etc.)
     implementation("androidx.compose.material:material-icons-extended:1.7.8")
-    // Red
+
+    // Motor yt-dlp — Maven Central, Python 3.11, yt-dlp viene dentro de library
+    // Artifacts disponibles: library, ffmpeg, common, aria2c (NO existe "yt-dlp" separado)
+    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
+    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
+
+    // Red y coroutines
     implementation("com.squareup.okhttp3:okhttp:5.3.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
-    // JSON
     implementation("org.json:json:20231013")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
