@@ -27,16 +27,24 @@
         android:usesCleartextTraffic="false"
         android:requestLegacyExternalStorage="true">
 
+        <!--
+            MainActivity es ahora el LAUNCHER directo.
+            El splash nativo (Theme.SplashScreen) se muestra automáticamente
+            mientras el proceso carga. installSplashScreen() en onCreate()
+            controla cuándo desaparece.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.DescargadorVideos"
-            android:screenOrientation="portrait">
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- SplashActivity eliminada: ya no se necesita -->
 
     </application>
 

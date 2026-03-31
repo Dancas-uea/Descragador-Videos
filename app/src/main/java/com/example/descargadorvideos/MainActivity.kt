@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import com.example.descargadorvideos.ui.theme.*
 import com.yausername.ffmpeg.FFmpeg
@@ -46,21 +47,34 @@ class MainActivity : ComponentActivity() {
     private val progreso      = mutableStateOf(0f)
     private val mensajeEstado = mutableStateOf("")
 
+    // Controla si el splash sigue visible (true = sigue esperando)
+    private var splashVisible = true
+
     override fun onCreate(savedInstanceState: Bundle?) {
+
+        // ── DEBE ser la primera línea, antes de super.onCreate ────────────────
+        val splashScreen = installSplashScreen()
+
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Inicializar yt-dlp y FFmpeg una sola vez al arrancar
+        // Mantiene el splash hasta que la inicialización termine
+        splashScreen.setKeepOnScreenCondition { splashVisible }
+
+        // Inicializar yt-dlp y FFmpeg — cuando terminen, quita el splash
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 YoutubeDL.getInstance().init(application)
-                FFmpeg.getInstance().init(application)   // habilita merge y conversión de audio
+                FFmpeg.getInstance().init(application)
                 YoutubeDL.getInstance().updateYoutubeDL(
                     application,
                     YoutubeDL.UpdateChannel.STABLE
                 )
             } catch (_: Exception) {
-                // No crítico
+                // No crítico — la app puede funcionar igual
+            } finally {
+                // Quita el splash pase lo que pase
+                splashVisible = false
             }
         }
 
@@ -117,41 +131,33 @@ suspend fun descargarConYtDlp(
             "Downloader"
         ).also { it.mkdirs() }
 
-        // Detectar plataforma
         val urlLower  = videoUrl.lowercase()
         val esYoutube = "youtube.com" in urlLower || "youtu.be" in urlLower
         val esTwitter = "twitter.com" in urlLower || "x.com" in urlLower || "t.co" in urlLower
 
-        // Plantilla con %(ext)s para que yt-dlp ponga la extensión correcta
         val prefijo       = "video_${System.currentTimeMillis()}"
         val rutaPlantilla = File(carpetaDescarga, "$prefijo.%(ext)s").absolutePath
 
-        // ── Configurar request de yt-dlp ─────────────────────────────────────
         val esMp3 = formato == "MP3"
 
         val request = YoutubeDLRequest(videoUrl).apply {
             addOption("--no-playlist")
 
             if (esMp3) {
-                // ── Modo audio: extraer y convertir a MP3 ─────────────────────
                 addOption("-x")
                 addOption("--audio-format", "mp3")
-                addOption("--audio-quality", "0")        // 0 = mejor calidad VBR
+                addOption("--audio-quality", "0")
             } else {
-                // ── Modo video ────────────────────────────────────────────────
                 when {
                     esYoutube -> {
-                        // YouTube separa video y audio, ffmpeg hace el merge
                         addOption("-f", "bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/bestvideo+bestaudio/best")
                         addOption("--merge-output-format", "mp4")
                     }
                     esTwitter -> {
-                        // X/Twitter entrega mp4 directo, sin merge
                         addOption("-f", "best[ext=mp4]/best")
                         addOption("--extractor-args", "twitter:api=syndication")
                     }
                     else -> {
-                        // TikTok, Instagram, Facebook — mp4 directo cuando existe
                         addOption("-f", "best[ext=mp4]/best")
                         addOption("--extractor-args", "tiktok:webpage_download=true")
                     }
@@ -161,7 +167,6 @@ suspend fun descargarConYtDlp(
             addOption("-o", rutaPlantilla)
         }
 
-        // ── Ejecutar descarga con callback de progreso ────────────────────────
         YoutubeDL.getInstance().execute(request) { p, _, line ->
             val porcentaje = p / 100f
             val msg = when {
@@ -175,7 +180,6 @@ suspend fun descargarConYtDlp(
             }
         }
 
-        // Buscar archivo por prefijo — yt-dlp elige la extensión final
         val archivoFinal = carpetaDescarga.listFiles()
             ?.filter { it.name.startsWith(prefijo) && it.length() > 0 }
             ?.maxByOrNull { it.lastModified() }
@@ -184,7 +188,6 @@ suspend fun descargarConYtDlp(
             return@withContext Pair(false, "❌ El archivo no se generó correctamente")
         }
 
-        // ── Mover a /Downloads públicos con MediaStore ────────────────────────
         withContext(Dispatchers.Main) { onProgreso(0.95f, "Guardando en Descargas...") }
 
         val extFinal      = archivoFinal.extension.ifEmpty { if (esMp3) "mp3" else "mp4" }
@@ -279,7 +282,7 @@ fun AppShell(
                         }
                         Spacer(Modifier.height(12.dp))
                         Text("VIP-Downloader", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Text("Verion v1.0.2", color = Color.White.copy(alpha = 0.4f), fontSize = 12.sp)
+                        Text("Version v1.0.2", color = Color.White.copy(alpha = 0.4f), fontSize = 12.sp)
                     }
                 }
 
@@ -365,7 +368,6 @@ fun AppShell(
                 mensajeEstado = mensajeEstado,
                 onDescargar   = onDescargar
             )
-            // onDescargar recibe (url, formato)
         }
     }
 }

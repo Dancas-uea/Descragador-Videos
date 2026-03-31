@@ -13,7 +13,7 @@ val TextSecondary = Color(0xFF6B7280)
 val TextHint      = Color(0xFFB0B8C5)
 
 // Accent principal — azul índigo vibrante
-val Accent        = Color(0xFF3B5BDB)
+val Accent        = Color(0xFF135FD0)
 val AccentLight   = Color(0xFFEEF2FF)
 val AccentDark    = Color(0xFF2F4AC2)
 
