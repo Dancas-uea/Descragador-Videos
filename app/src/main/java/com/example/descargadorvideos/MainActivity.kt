@@ -108,22 +108,44 @@ suspend fun descargarConYtDlp(
 ): Pair<Boolean, String> = withContext(Dispatchers.IO) {
 
     try {
-        // Carpeta de descarga temporal dentro de la app
         val carpetaDescarga = File(
             context.getExternalFilesDir(null),
             "VDownloader"
         ).also { it.mkdirs() }
 
-        val nombreArchivo = "video_${System.currentTimeMillis()}.mp4"
-        val archivoFinal  = File(carpetaDescarga, nombreArchivo)
+        // Detectar plataforma
+        val urlLower  = videoUrl.lowercase()
+        val esYoutube = "youtube.com" in urlLower || "youtu.be" in urlLower
+        val esTwitter = "twitter.com" in urlLower || "x.com" in urlLower || "t.co" in urlLower
+
+        // Plantilla con %(ext)s para que yt-dlp ponga la extensión correcta
+        val prefijo       = "video_${System.currentTimeMillis()}"
+        val rutaPlantilla = File(carpetaDescarga, "$prefijo.%(ext)s").absolutePath
 
         // ── Configurar request de yt-dlp ─────────────────────────────────────
         val request = YoutubeDLRequest(videoUrl).apply {
-            addOption("-f", "bestvideo[ext=mp4][vcodec^=avc]+bestaudio[ext=m4a]/best[ext=mp4]/best")
-            addOption("-o", archivoFinal.absolutePath)
-            addOption("--merge-output-format", "mp4")
             addOption("--no-playlist")
-            addOption("--extractor-args", "tiktok:webpage_download=true")
+
+            when {
+                esYoutube -> {
+                    // Mejor calidad mp4 con h264 + aac, ffmpeg fusiona
+                    addOption("-f", "bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/bestvideo+bestaudio/best")
+                    addOption("--merge-output-format", "mp4")
+                }
+                esTwitter -> {
+                    // X/Twitter: mp4 directo, API syndication sin login
+                    addOption("-f", "best[ext=mp4]/best")
+                    addOption("--extractor-args", "twitter:api=syndication")
+                }
+                else -> {
+                    // TikTok, Instagram, Facebook
+                    addOption("-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best")
+                    addOption("--merge-output-format", "mp4")
+                    addOption("--extractor-args", "tiktok:webpage_download=true")
+                }
+            }
+
+            addOption("-o", rutaPlantilla)
         }
 
         // ── Ejecutar descarga con callback de progreso ────────────────────────
@@ -140,7 +162,12 @@ suspend fun descargarConYtDlp(
             }
         }
 
-        if (!archivoFinal.exists() || archivoFinal.length() == 0L) {
+        // Buscar archivo por prefijo — yt-dlp elige la extensión final
+        val archivoFinal = carpetaDescarga.listFiles()
+            ?.filter { it.name.startsWith(prefijo) && it.length() > 0 }
+            ?.maxByOrNull { it.lastModified() }
+
+        if (archivoFinal == null) {
             return@withContext Pair(false, "❌ El archivo no se generó correctamente")
         }
 
