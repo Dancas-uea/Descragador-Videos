@@ -3,7 +3,7 @@ package com.example.descargadorvideos
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
+import androidx.core.net.toUri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
@@ -11,6 +11,8 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -30,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import com.example.descargadorvideos.ui.theme.*
+import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.Dispatchers
@@ -47,17 +50,17 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Inicializar yt-dlp una sola vez al arrancar
+        // Inicializar yt-dlp y FFmpeg una sola vez al arrancar
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 YoutubeDL.getInstance().init(application)
-                // Actualizar al canal estable (nueva firma en 0.17.+)
+                FFmpeg.getInstance().init(application)   // habilita merge y conversión de audio
                 YoutubeDL.getInstance().updateYoutubeDL(
                     application,
                     YoutubeDL.UpdateChannel.STABLE
                 )
-            } catch (e: Exception) {
-                // Si falla el update no es crítico, continúa con la versión instalada
+            } catch (_: Exception) {
+                // No crítico
             }
         }
 
@@ -67,13 +70,13 @@ class MainActivity : ComponentActivity() {
                     descargando   = procesando.value,
                     progreso      = progreso.value,
                     mensajeEstado = mensajeEstado.value,
-                    onDescargar   = { url -> iniciarDescarga(url) }
+                    onDescargar   = { url, formato -> iniciarDescarga(url, formato) }
                 )
             }
         }
     }
 
-    private fun iniciarDescarga(url: String) {
+    private fun iniciarDescarga(url: String, formato: String) {
         val urlLimpia = url.trim()
         if (urlLimpia.isEmpty()) {
             Toast.makeText(this, "⚠️ Pega un enlace primero", Toast.LENGTH_SHORT).show()
@@ -86,7 +89,7 @@ class MainActivity : ComponentActivity() {
         mensajeEstado.value = "Extrayendo info del video..."
 
         lifecycleScope.launch {
-            val resultado = descargarConYtDlp(urlLimpia, this@MainActivity) { p, msg ->
+            val resultado = descargarConYtDlp(urlLimpia, formato, this@MainActivity) { p, msg ->
                 progreso.value      = p
                 mensajeEstado.value = msg
             }
@@ -103,6 +106,7 @@ class MainActivity : ComponentActivity() {
 
 suspend fun descargarConYtDlp(
     videoUrl: String,
+    formato: String,
     context: Context,
     onProgreso: (Float, String) -> Unit
 ): Pair<Boolean, String> = withContext(Dispatchers.IO) {
@@ -123,25 +127,34 @@ suspend fun descargarConYtDlp(
         val rutaPlantilla = File(carpetaDescarga, "$prefijo.%(ext)s").absolutePath
 
         // ── Configurar request de yt-dlp ─────────────────────────────────────
+        val esMp3 = formato == "MP3"
+
         val request = YoutubeDLRequest(videoUrl).apply {
             addOption("--no-playlist")
 
-            when {
-                esYoutube -> {
-                    // Mejor calidad mp4 con h264 + aac, ffmpeg fusiona
-                    addOption("-f", "bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/bestvideo+bestaudio/best")
-                    addOption("--merge-output-format", "mp4")
-                }
-                esTwitter -> {
-                    // X/Twitter: mp4 directo, API syndication sin login
-                    addOption("-f", "best[ext=mp4]/best")
-                    addOption("--extractor-args", "twitter:api=syndication")
-                }
-                else -> {
-                    // TikTok, Instagram, Facebook
-                    addOption("-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best")
-                    addOption("--merge-output-format", "mp4")
-                    addOption("--extractor-args", "tiktok:webpage_download=true")
+            if (esMp3) {
+                // ── Modo audio: extraer y convertir a MP3 ─────────────────────
+                addOption("-x")
+                addOption("--audio-format", "mp3")
+                addOption("--audio-quality", "0")        // 0 = mejor calidad VBR
+            } else {
+                // ── Modo video ────────────────────────────────────────────────
+                when {
+                    esYoutube -> {
+                        // YouTube separa video y audio, ffmpeg hace el merge
+                        addOption("-f", "bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/bestvideo+bestaudio/best")
+                        addOption("--merge-output-format", "mp4")
+                    }
+                    esTwitter -> {
+                        // X/Twitter entrega mp4 directo, sin merge
+                        addOption("-f", "best[ext=mp4]/best")
+                        addOption("--extractor-args", "twitter:api=syndication")
+                    }
+                    else -> {
+                        // TikTok, Instagram, Facebook — mp4 directo cuando existe
+                        addOption("-f", "best[ext=mp4]/best")
+                        addOption("--extractor-args", "tiktok:webpage_download=true")
+                    }
                 }
             }
 
@@ -174,12 +187,14 @@ suspend fun descargarConYtDlp(
         // ── Mover a /Downloads públicos con MediaStore ────────────────────────
         withContext(Dispatchers.Main) { onProgreso(0.95f, "Guardando en Descargas...") }
 
-        val nombrePublico = "VDownloader_${System.currentTimeMillis()}.mp4"
+        val extFinal      = archivoFinal.extension.ifEmpty { if (esMp3) "mp3" else "mp4" }
+        val mimeType      = if (esMp3) "audio/mpeg" else "video/mp4"
+        val nombrePublico = "VDownloader_${System.currentTimeMillis()}.$extFinal"
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val cv = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, nombrePublico)
-                put(MediaStore.Downloads.MIME_TYPE,    "video/mp4")
+                put(MediaStore.Downloads.MIME_TYPE,    mimeType)
                 put(MediaStore.Downloads.IS_PENDING,   1)
             }
             val uri = context.contentResolver.insert(
@@ -228,7 +243,7 @@ fun AppShell(
     descargando: Boolean,
     progreso: Float,
     mensajeEstado: String,
-    onDescargar: (String) -> Unit
+    onDescargar: (String, String) -> Unit
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope       = rememberCoroutineScope()
@@ -270,12 +285,12 @@ fun AppShell(
                 DrawerItem("📖", "Cómo descargar")  { scope.launch { drawerState.close() } }
                 DrawerItem("⚙️", "Configuraciones") { scope.launch { drawerState.close() } }
                 DrawerItem("🎧", "Soporte") {
-                    ctx.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:soporte@vdownloader.app")))
+                    ctx.startActivity(Intent(Intent.ACTION_SENDTO, "mailto:soporte@vdownloader.app".toUri()))
                     scope.launch { drawerState.close() }
                 }
 
                 Spacer(Modifier.weight(1f))
-                Divider(color = DrawerBorder)
+                HorizontalDivider(color = DrawerBorder)
 
                 Text(
                     "Plataformas",
@@ -347,6 +362,7 @@ fun AppShell(
                 mensajeEstado = mensajeEstado,
                 onDescargar   = onDescargar
             )
+            // onDescargar recibe (url, formato)
         }
     }
 }
@@ -358,6 +374,7 @@ fun DrawerItem(emoji: String, label: String, onClick: () -> Unit) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .background(Color.Transparent)
+            .clickable(onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 14.dp),
         verticalAlignment     = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp)
@@ -373,11 +390,12 @@ fun HomeScreen(
     descargando: Boolean,
     progreso: Float,
     mensajeEstado: String,
-    onDescargar: (String) -> Unit
+    onDescargar: (String, String) -> Unit
 ) {
-    val contexto = LocalContext.current
-    var urlVideo by remember { mutableStateOf("") }
-    val scroll   = rememberScrollState()
+    val contexto  = LocalContext.current
+    var urlVideo  by remember { mutableStateOf("") }
+    var formatoSel by remember { mutableStateOf("MP4") }
+    val scroll    = rememberScrollState()
 
     Column(
         modifier = modifier
@@ -430,9 +448,38 @@ fun HomeScreen(
                     )
                 )
 
+                // ── Selector MP4 / MP3 ────────────────────────────────────────
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    listOf("MP4" to "🎬  Video", "MP3" to "🎵  Audio").forEach { (valor, etiqueta) ->
+                        val seleccionado = formatoSel == valor
+                        OutlinedButton(
+                            onClick  = { if (!descargando) formatoSel = valor },
+                            modifier = Modifier.weight(1f).height(44.dp),
+                            shape    = RoundedCornerShape(10.dp),
+                            border   = BorderStroke(
+                                width = if (seleccionado) 2.dp else 1.dp,
+                                color = if (seleccionado) Accent else BorderLight
+                            ),
+                            colors   = ButtonDefaults.outlinedButtonColors(
+                                containerColor = if (seleccionado) AccentLight else Color.Transparent
+                            )
+                        ) {
+                            Text(
+                                etiqueta,
+                                color      = if (seleccionado) Accent else TextSecondary,
+                                fontWeight = if (seleccionado) FontWeight.Bold else FontWeight.Normal,
+                                fontSize   = 13.sp
+                            )
+                        }
+                    }
+                }
+
                 Button(
                     onClick = {
-                        if (urlVideo.isNotEmpty()) onDescargar(urlVideo)
+                        if (urlVideo.isNotEmpty()) onDescargar(urlVideo, formatoSel)
                         else Toast.makeText(contexto, "⚠️ Pega un enlace primero", Toast.LENGTH_SHORT).show()
                     },
                     modifier  = Modifier.fillMaxWidth().height(50.dp),
@@ -448,7 +495,8 @@ fun HomeScreen(
                         Spacer(Modifier.width(10.dp))
                         Text("Descargando...", color = Color.White, fontWeight = FontWeight.SemiBold)
                     } else {
-                        Text("⬇  Descargar", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                        val icono = if (formatoSel == "MP3") "🎵" else "🎬"
+                        Text("⬇  Descargar $icono $formatoSel", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                     }
                 }
             }
@@ -520,6 +568,6 @@ fun HomeScreen(
 @Composable
 fun PreviewApp() {
     DescargadorVideosTheme {
-        AppShell(descargando = false, progreso = 0f, mensajeEstado = "", onDescargar = {})
+        AppShell(descargando = false, progreso = 0f, mensajeEstado = "", onDescargar = { _, _ -> })
     }
 }
