@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.Color
 // ── Paleta principal ──────────────────────────────────────────────────────────
 val White       = Color(0xFFFFFFFF)
 val OffWhite    = Color(0xFFF7F8FA)
+val icon        = Color(0x00F7F8FA)
 val Surface     = Color(0xFFEFF1F5)
 val SurfaceCard = Color(0xFFFFFFFF)
 

@@ -81,23 +81,28 @@ fun SplashScreen(onFinish: () -> Unit) {
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    listOf(Color(0xFF1A1D26), Color(0xFF0D0F14))
+                    listOf(Color(0xFF0544EA), Color(0xFF0D6EE7))
                 )
             ),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center ,
+            modifier = Modifier.fillMaxWidth()
+        ) {
 
             // ── Logo con animación de escala ───────────────────────────────────
             Image(
-                painter            = painterResource(id = R.drawable.icon_downloader_foreground),
+                painter            = painterResource(id = R.mipmap.icon_do),
                 contentDescription = "VIP-Downloader logo",
                 modifier           = Modifier
                     .size(10.dp)
+                    .clip(CircleShape)
                     .scale(scale)          // ahora sí rebota desde 0.4f
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // ── Nombre ────────────────────────────────────────────────────────
             Text(
@@ -115,7 +120,7 @@ fun SplashScreen(onFinish: () -> Unit) {
                 modifier  = Modifier.padding(top = 6.dp)
             )
 
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
             // ── Dots loader ───────────────────────────────────────────────────
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

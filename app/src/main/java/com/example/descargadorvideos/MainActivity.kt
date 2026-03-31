@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.net.toUri
 import android.os.Build
+import coil.compose.AsyncImage
 import android.os.Bundle
 import android.provider.MediaStore
 import android.widget.Toast
@@ -40,6 +41,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
 
 class MainActivity : ComponentActivity() {
 
@@ -267,18 +270,24 @@ fun AppShell(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(DrawerSurface)
-                        .padding(24.dp)
-                        .padding(top = 28.dp)
+                        .padding(20.dp)
+                        .padding(top = 20.dp)
                 ) {
                     Column {
                         Box(
                             modifier = Modifier
-                                .size(52.dp)
+                                .size(45.dp)
                                 .clip(RoundedCornerShape(14.dp))
-                                .background(Accent),
+                                .background(icon),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("↓", fontSize = 26.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                            Image(
+                                painter = painterResource(id = R.drawable.icon_do_round),
+                                contentDescription = "VIP-Downloader",
+                                modifier = Modifier
+                                    .size(46.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                            )
                         }
                         Spacer(Modifier.height(12.dp))
                         Text("VIP-Downloader", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
@@ -287,41 +296,24 @@ fun AppShell(
                 }
 
                 Spacer(Modifier.height(8.dp))
-                DrawerItem("🏠", "Inicio")          { scope.launch { drawerState.close() } }
-                DrawerItem("📖", "Cómo descargar")  { scope.launch { drawerState.close() } }
-                DrawerItem("⚙️", "Configuraciones") { scope.launch { drawerState.close() } }
-                DrawerItem("🎧", "Soporte") {
+                DrawerItem("https://img.icons8.com/color/48/home.png",          "Inicio")         { scope.launch { drawerState.close() } }
+                DrawerItem("https://img.icons8.com/color/48/open-book.png",     "Cómo descargar") { scope.launch { drawerState.close() } }
+                DrawerItem("https://img.icons8.com/color/48/settings.png",      "Configuraciones"){ scope.launch { drawerState.close() } }
+                DrawerItem("https://img.icons8.com/color/48/headset.png",       "Soporte") {
                     ctx.startActivity(Intent(Intent.ACTION_SENDTO, "mailto:soporte@vdownloader.app".toUri()))
                     scope.launch { drawerState.close() }
                 }
 
-                Spacer(Modifier.weight(1f))
-                HorizontalDivider(color = DrawerBorder)
 
+                Spacer(Modifier.weight(1f))  // empuja el texto hacia abajo
+                HorizontalDivider(color = DrawerBorder)
                 Text(
-                    "Plataformas",
+                    "Desarrollado por Carlos Castillo",
                     color    = Color.White.copy(alpha = 0.35f),
                     fontSize = 11.sp,
-                    modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 8.dp),
-                    letterSpacing = 1.sp
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)
                 )
-                Row(
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf("♪ TikTok", "▶ YT", "◈ IG", "𝕏", "f FB").forEach { label ->
-                        Text(
-                            label,
-                            color    = Color.White.copy(alpha = 0.6f),
-                            fontSize = 11.sp,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(DrawerSurface)
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-                Spacer(Modifier.height(24.dp))
+
             }
         }
     ) {
@@ -373,7 +365,7 @@ fun AppShell(
 }
 
 @Composable
-fun DrawerItem(emoji: String, label: String, onClick: () -> Unit) {
+fun DrawerItem(iconUrl: String, label: String, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -384,7 +376,11 @@ fun DrawerItem(emoji: String, label: String, onClick: () -> Unit) {
         verticalAlignment     = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text(emoji, fontSize = 18.sp)
+        AsyncImage(
+            model              = iconUrl,
+            contentDescription = label,
+            modifier           = Modifier.size(22.dp)
+        )
         Text(label, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
     }
 }
@@ -412,15 +408,31 @@ fun HomeScreen(
         // ── Chips plataformas ─────────────────────────────────────────────────
         Text("Plataformas soportadas", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("♪" to "TikTok", "▶" to "YouTube", "◈" to "Instagram", "𝕏" to "X", "f" to "FB").forEach { (icon, name) ->
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            listOf(
+                "https://img.icons8.com/color/48/tiktok.png"        to "TikTok",
+                "https://img.icons8.com/color/48/youtube-play.png"  to "YouTube",
+                "https://img.icons8.com/color/48/instagram-new.png" to "Instagram",
+                "https://img.icons8.com/color/48/twitterx.png"      to "X",
+                "https://img.icons8.com/color/48/facebook.png"      to "Facebook"
+            )
+                .forEach { (url, name) ->
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     Box(
                         modifier = Modifier
                             .size(44.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(SurfaceCard),
                         contentAlignment = Alignment.Center
-                    ) { Text(icon, fontSize = 20.sp) }
+                    ) {
+                        AsyncImage(
+                            model = url,
+                            contentDescription = name,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                     Text(name, fontSize = 9.sp, color = TextSecondary)
                 }
             }
@@ -454,11 +466,16 @@ fun HomeScreen(
                 )
 
                 // ── Selector MP4 / MP3 ────────────────────────────────────────
+                val iconos = mapOf(
+                    "MP4" to "https://img.icons8.com/color/48/video.png",
+                    "MP3" to "https://img.icons8.com/color/48/music.png"
+                )
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    listOf("MP4" to "🎬  Video", "MP3" to "🎵  Audio").forEach { (valor, etiqueta) ->
+                    listOf("MP4" to "Video", "MP3" to "Audio").forEach { (valor, etiqueta) ->
                         val seleccionado = formatoSel == valor
                         OutlinedButton(
                             onClick  = { if (!descargando) formatoSel = valor },
@@ -468,10 +485,16 @@ fun HomeScreen(
                                 width = if (seleccionado) 2.dp else 1.dp,
                                 color = if (seleccionado) Accent else BorderLight
                             ),
-                            colors   = ButtonDefaults.outlinedButtonColors(
+                            colors = ButtonDefaults.outlinedButtonColors(
                                 containerColor = if (seleccionado) AccentLight else Color.Transparent
                             )
                         ) {
+                            AsyncImage(
+                                model = iconos[valor],
+                                contentDescription = etiqueta,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
                             Text(
                                 etiqueta,
                                 color      = if (seleccionado) Accent else TextSecondary,
@@ -500,8 +523,15 @@ fun HomeScreen(
                         Spacer(Modifier.width(10.dp))
                         Text("Descargando...", color = Color.White, fontWeight = FontWeight.SemiBold)
                     } else {
-                        val icono = if (formatoSel == "MP3") "🎵" else "🎬"
-                        Text("⬇  Descargar $icono $formatoSel", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                        val iconUrl = if (formatoSel == "MP3") "https://img.icons8.com/color/48/music.png"
+                        else "https://img.icons8.com/color/48/video.png"
+                        AsyncImage(
+                            model = iconUrl,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Descargar $formatoSel", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                     }
                 }
             }
@@ -522,15 +552,34 @@ fun HomeScreen(
                 elevation = CardDefaults.cardElevation(0.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        mensajeEstado,
-                        color = when {
-                            mensajeEstado.startsWith("✅") -> Success
-                            mensajeEstado.startsWith("❌") -> Error
-                            else -> TextPrimary
-                        },
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+
+                    // ── Icono + mensaje ───────────────────────────────────────────
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val iconoUrl = when {
+                            mensajeEstado.startsWith("✅") -> "https://img.icons8.com/color/48/ok--v1.png"
+                            mensajeEstado.startsWith("❌") -> "https://img.icons8.com/color/48/cancel.png"
+                            else -> null
+                        }
+                        if (iconoUrl != null) {
+                            AsyncImage(
+                                model = iconoUrl,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(
+                            // Quita el emoji ✅ o ❌ del inicio del texto
+                            text  = mensajeEstado.removePrefix("✅").removePrefix("❌").trimStart(),
+                            color = when {
+                                mensajeEstado.startsWith("✅") -> Success
+                                mensajeEstado.startsWith("❌") -> Error
+                                else -> TextPrimary
+                            },
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+
                     if (descargando) {
                         if (progreso > 0f) {
                             LinearProgressIndicator(
