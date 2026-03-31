@@ -223,9 +223,12 @@ suspend fun descargarConYtDlp(
     } catch (e: com.yausername.youtubedl_android.YoutubeDLException) {
         val msg = e.message ?: "Error desconocido"
         return@withContext when {
-            "private"     in msg.lowercase() -> Pair(false, "❌ Video privado o eliminado")
-            "login"       in msg.lowercase() -> Pair(false, "❌ Este video requiere inicio de sesión")
-            "unavailable" in msg.lowercase() -> Pair(false, "❌ Video no disponible en tu región")
+            "private"      in msg.lowercase() -> Pair(false, "❌ Video privado o eliminado")
+            "login"        in msg.lowercase() -> Pair(false, "❌ Este video requiere inicio de sesión")
+            "unavailable"  in msg.lowercase() -> Pair(false, "❌ Video no disponible en tu región")
+            "no video"     in msg.lowercase() -> Pair(false, "❌ Este tweet no contiene video o no es público")
+            "syndication"  in msg.lowercase() -> Pair(false, "❌ Tweet no accesible — puede ser privado o sin video")
+            "not all meta" in msg.lowercase() -> Pair(false, "❌ Tweet no accesible — puede ser privado o sin video")
             else -> Pair(false, "❌ Error: $msg")
         }
     } catch (e: Exception) {
